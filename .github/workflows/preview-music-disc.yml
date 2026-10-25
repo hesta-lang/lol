@@ -1,0 +1,89 @@
+name: Preview music disc replacement
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  make-preview:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Create disc replacement preview
+        run: |
+          python -m pip install --disable-pip-version-check Pillow
+          python - <<'PY'
+          from PIL import Image, ImageDraw
+          from pathlib import Path
+          import json, math
+
+          src = Path("MH_menu-uhd.png")
+          if not src.exists():
+              raise SystemExit("MH_menu-uhd.png not found")
+          original = Image.open(src).convert("RGBA")
+          w, h = original.size
+          if (w, h) != (184, 188):
+              raise SystemExit(f"Unexpected source dimensions: {w}x{h}; refusing to guess disc placement.")
+
+          # Centered on the existing M. Keep the original untouched and create a separate preview.
+          cx, cy = 92, 94
+          radius = 39
+          layer = Image.new("RGBA", original.size, (0, 0, 0, 0))
+          d = ImageDraw.Draw(layer)
+
+          # Opaque vinyl disc masks the old M beneath it.
+          d.ellipse((cx-radius, cy-radius, cx+radius, cy+radius),
+                    fill=(12, 14, 17, 255), outline=(245, 245, 245, 255), width=2)
+          # Vinyl grooves
+          for r, color, width in [
+              (34, (65, 69, 73, 255), 1),
+              (30, (35, 38, 42, 255), 1),
+              (26, (73, 77, 80, 255), 1),
+              (22, (34, 37, 41, 255), 1),
+          ]:
+              d.ellipse((cx-r, cy-r, cx+r, cy+r), outline=color, width=width)
+          # Subtle highlight arc segments
+          d.arc((cx-35, cy-35, cx+35, cy+35), 205, 320, fill=(190, 194, 198, 255), width=1)
+          d.arc((cx-27, cy-27, cx+27, cy+27), 25, 140, fill=(130, 135, 140, 255), width=1)
+          # Lime label to match the existing logo palette
+          d.ellipse((cx-17, cy-17, cx+17, cy+17),
+                    fill=(142, 242, 48, 255), outline=(245, 245, 245, 255), width=1)
+          d.ellipse((cx-10, cy-10, cx+10, cy+10),
+                    outline=(44, 94, 23, 255), width=2)
+          d.ellipse((cx-3, cy-3, cx+3, cy+3), fill=(12, 14, 17, 255))
+
+          result = Image.alpha_composite(original, layer)
+          out = Path("music-disc-preview")
+          out.mkdir(exist_ok=True)
+          result.save(out / "MH_menu-disc-preview.png")
+          original.save(out / "MH_menu-original-unchanged.png")
+          # Enlarged preview for easy inspection on mobile
+          enlarged = result.resize((w*3, h*3), Image.Resampling.NEAREST)
+          enlarged.save(out / "MH_menu-disc-preview-3x.png")
+          (out / "README.txt").write_text(
+              "Preview only. The source MH_menu-uhd.png was not modified. "
+              "The disc is centered at (92,94), radius 39 px, based on the inspected 184x188 image. "
+              "Review MH_menu-disc-preview-3x.png before deciding whether to use it.",
+              encoding="utf-8"
+          )
+          print(json.dumps({"source_size":[w,h],"disc_center":[cx,cy],"radius":radius,
+                            "outputs":["MH_menu-disc-preview.png","MH_menu-disc-preview-3x.png",
+                                       "MH_menu-original-unchanged.png"]}, indent=2))
+          PY
+
+      - name: Upload preview files
+        uses: actions/upload-artifact@v4
+        with:
+          name: music-disc-replacement-preview
+          path: music-disc-preview/
+          if-no-files-found: error
+          retention-days: 7
