@@ -36,7 +36,7 @@ jobs:
 
           # Centered on the existing M. Keep the original untouched and create a separate preview.
           cx, cy = 92, 94
-          radius = 39
+          radius = 48
           layer = Image.new("RGBA", original.size, (0, 0, 0, 0))
           d = ImageDraw.Draw(layer)
 
@@ -45,7 +45,8 @@ jobs:
                     fill=(12, 14, 17, 255), outline=(245, 245, 245, 255), width=2)
           # Vinyl grooves
           for r, color, width in [
-              (34, (65, 69, 73, 255), 1),
+              (43, (65, 69, 73, 255), 1),
+              (39, (65, 69, 73, 255), 1),
               (30, (35, 38, 42, 255), 1),
               (26, (73, 77, 80, 255), 1),
               (22, (34, 37, 41, 255), 1),
@@ -71,11 +72,11 @@ jobs:
           enlarged.save(out / "MH_menu-disc-preview-3x.png")
           (out / "README.txt").write_text(
               "Preview only. The source MH_menu-uhd.png was not modified. "
-              "The disc is centered at (92,94), radius 39 px, based on the inspected 184x188 image. "
+              "The disc is centered at (92,94), radius 48 px, based on the inspected 184x188 image. "
               "Review MH_menu-disc-preview-3x.png before deciding whether to use it.",
               encoding="utf-8"
           )
-          print(json.dumps({"source_size":[w,h],"disc_center":[cx,cy],"radius":radius,
+          print(json.dumps({"source_size":[w,h],"disc_center":[cx,cy],"radius":radius, "note":"Larger opaque disc intended to fully cover the old M",
                             "outputs":["MH_menu-disc-preview.png","MH_menu-disc-preview-3x.png",
                                        "MH_menu-original-unchanged.png"]}, indent=2))
           PY
