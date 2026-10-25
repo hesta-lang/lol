@@ -1,4 +1,4 @@
-name: Preview music disc replacement
+name: Preview music disc replacement (HD + UHD)
 
 on:
   workflow_dispatch:
@@ -18,73 +18,79 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Create disc replacement preview
+      - name: Create HD and UHD previews
         run: |
           python -m pip install --disable-pip-version-check Pillow
           python - <<'PY'
           from PIL import Image, ImageDraw
           from pathlib import Path
-          import json, math
+          import json
 
-          src = Path("MH_menu-uhd.png")
-          if not src.exists():
-              raise SystemExit("MH_menu-uhd.png not found")
-          original = Image.open(src).convert("RGBA")
-          w, h = original.size
-          if (w, h) != (184, 188):
-              raise SystemExit(f"Unexpected source dimensions: {w}x{h}; refusing to guess disc placement.")
-
-          # Centered on the existing M. Keep the original untouched and create a separate preview.
-          cx, cy = 92, 94
-          radius = 48
-          layer = Image.new("RGBA", original.size, (0, 0, 0, 0))
-          d = ImageDraw.Draw(layer)
-
-          # Opaque vinyl disc masks the old M beneath it.
-          d.ellipse((cx-radius, cy-radius, cx+radius, cy+radius),
-                    fill=(12, 14, 17, 255), outline=(245, 245, 245, 255), width=2)
-          # Vinyl grooves
-          for r, color, width in [
-              (43, (65, 69, 73, 255), 1),
-              (39, (65, 69, 73, 255), 1),
-              (30, (35, 38, 42, 255), 1),
-              (26, (73, 77, 80, 255), 1),
-              (22, (34, 37, 41, 255), 1),
-          ]:
-              d.ellipse((cx-r, cy-r, cx+r, cy+r), outline=color, width=width)
-          # Subtle highlight arc segments
-          d.arc((cx-35, cy-35, cx+35, cy+35), 205, 320, fill=(190, 194, 198, 255), width=1)
-          d.arc((cx-27, cy-27, cx+27, cy+27), 25, 140, fill=(130, 135, 140, 255), width=1)
-          # Lime label to match the existing logo palette
-          d.ellipse((cx-17, cy-17, cx+17, cy+17),
-                    fill=(142, 242, 48, 255), outline=(245, 245, 245, 255), width=1)
-          d.ellipse((cx-10, cy-10, cx+10, cy+10),
-                    outline=(44, 94, 23, 255), width=2)
-          d.ellipse((cx-3, cy-3, cx+3, cy+3), fill=(12, 14, 17, 255))
-
-          result = Image.alpha_composite(original, layer)
           out = Path("music-disc-preview")
           out.mkdir(exist_ok=True)
-          result.save(out / "MH_menu-disc-preview.png")
-          original.save(out / "MH_menu-original-unchanged.png")
-          # Enlarged preview for easy inspection on mobile
-          enlarged = result.resize((w*3, h*3), Image.Resampling.NEAREST)
-          enlarged.save(out / "MH_menu-disc-preview-3x.png")
+          reports = []
+
+          def make_preview(filename, tag):
+              src = Path(filename)
+              if not src.exists():
+                  raise SystemExit(f"Missing source image: {filename}")
+              original = Image.open(src).convert("RGBA")
+              w, h = original.size
+              # Proportional placement works for both HD and UHD dimensions.
+              cx, cy = w // 2, h // 2
+              radius = round(min(w, h) * 0.255)
+              layer = Image.new("RGBA", original.size, (0, 0, 0, 0))
+              d = ImageDraw.Draw(layer)
+
+              # Opaque vinyl masks the M; the original file remains unchanged.
+              d.ellipse((cx-radius, cy-radius, cx+radius, cy+radius),
+                        fill=(12, 14, 17, 255),
+                        outline=(245, 245, 245, 255), width=max(1, round(min(w,h)*0.009)))
+              scale = min(w, h) / 188
+              for rr, color in [
+                  (0.89, (65, 69, 73, 255)),
+                  (0.81, (35, 38, 42, 255)),
+                  (0.68, (73, 77, 80, 255)),
+                  (0.57, (34, 37, 41, 255)),
+              ]:
+                  r = round(radius * rr)
+                  d.ellipse((cx-r, cy-r, cx+r, cy+r),
+                            outline=color, width=max(1, round(scale)))
+              d.arc((cx-round(radius*.90), cy-round(radius*.90),
+                     cx+round(radius*.90), cy+round(radius*.90)),
+                    205, 320, fill=(190, 194, 198, 255), width=max(1, round(scale)))
+              label_r = round(radius * 0.44)
+              d.ellipse((cx-label_r, cy-label_r, cx+label_r, cy+label_r),
+                        fill=(142, 242, 48, 255),
+                        outline=(245, 245, 245, 255), width=max(1, round(scale)))
+              inner = round(radius * 0.26)
+              d.ellipse((cx-inner, cy-inner, cx+inner, cy+inner),
+                        outline=(44, 94, 23, 255), width=max(1, round(scale*1.5)))
+              hole = max(2, round(radius * 0.08))
+              d.ellipse((cx-hole, cy-hole, cx+hole, cy+hole), fill=(12, 14, 17, 255))
+
+              result = Image.alpha_composite(original, layer)
+              result.save(out / f"MH_menu-{tag}-disc-preview.png")
+              result.resize((w*3, h*3), Image.Resampling.NEAREST).save(
+                  out / f"MH_menu-{tag}-disc-preview-3x.png")
+              original.save(out / f"MH_menu-{tag}-original-unchanged.png")
+              reports.append({"file": filename, "size": [w,h], "center": [cx,cy], "radius": radius})
+          
+          make_preview("MH_menu-hd.png", "hd")
+          make_preview("MH_menu-uhd.png", "uhd")
           (out / "README.txt").write_text(
-              "Preview only. The source MH_menu-uhd.png was not modified. "
-              "The disc is centered at (92,94), radius 48 px, based on the inspected 184x188 image. "
-              "Review MH_menu-disc-preview-3x.png before deciding whether to use it.",
+              "Preview only: both original HD and UHD files remain unchanged. "
+              "The disc is opaque and proportionally centered to cover the existing M. "
+              "Review both *-disc-preview-3x.png images before replacing either original.\n",
               encoding="utf-8"
           )
-          print(json.dumps({"source_size":[w,h],"disc_center":[cx,cy],"radius":radius, "note":"Larger opaque disc intended to fully cover the old M",
-                            "outputs":["MH_menu-disc-preview.png","MH_menu-disc-preview-3x.png",
-                                       "MH_menu-original-unchanged.png"]}, indent=2))
+          print(json.dumps(reports, indent=2))
           PY
 
       - name: Upload preview files
         uses: actions/upload-artifact@v4
         with:
-          name: music-disc-replacement-preview
+          name: music-disc-replacement-preview-hd-uhd
           path: music-disc-preview/
           if-no-files-found: error
           retention-days: 7
