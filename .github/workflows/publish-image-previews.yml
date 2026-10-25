@@ -1,0 +1,38 @@
+name: Publish image previews for Android
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish-previews:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Extract diagnostic ZIP
+        run: |
+          set -euo pipefail
+          test -f mega-hack-m-location.zip || { echo "mega-hack-m-location.zip is missing from repository root"; exit 1; }
+          mkdir -p /tmp/m-location
+          unzip -o mega-hack-m-location.zip -d /tmp/m-location
+          find /tmp/m-location -maxdepth 3 -type f -print
+
+      - name: Publish preview images to repository
+        run: |
+          set -euo pipefail
+          mkdir -p image-location-preview
+          find /tmp/m-location -type f \( -name 'candidate-overlay.png' -o -name 'center-preview.png' -o -name 'original.png' -o -name 'candidates.json' \) -exec cp {} image-location-preview/ \;
+          test -f image-location-preview/candidate-overlay.png || { echo "candidate-overlay.png not found inside ZIP"; exit 1; }
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add image-location-preview/
+          if git diff --cached --quiet; then
+            echo "No preview changes to commit."
+          else
+            git commit -m "Publish M-location diagnostic previews"
+            git push
+          fi
