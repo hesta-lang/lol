@@ -1,0 +1,117 @@
+name: Locate the M in Mega Hack image
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  locate-m:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install image tools
+        run: python -m pip install --disable-pip-version-check Pillow opencv-python-headless numpy
+
+      - name: Analyze image and make candidate previews
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from PIL import Image, ImageDraw
+          import cv2, json, numpy as np
+
+          src = Path("MH_menu-uhd.png")
+          out = Path("image-location")
+          out.mkdir(exist_ok=True)
+          if not src.exists():
+              raise SystemExit("MH_menu-uhd.png was not found at repository root")
+
+          pil = Image.open(src).convert("RGBA")
+          rgba = np.array(pil)
+          rgb = cv2.cvtColor(rgba[:, :, :3], cv2.COLOR_RGB2BGR)
+          h, w = rgb.shape[:2]
+          gray = cv2.cvtColor(rgb, cv2.COLOR_BGR2GRAY)
+
+          # Create several edge/contrast masks because the source's background is not known.
+          edge = cv2.Canny(gray, 35, 110)
+          edge = cv2.dilate(edge, np.ones((3, 3), np.uint8), iterations=1)
+          contours, _ = cv2.findContours(edge, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+          candidates = []
+          min_area = max(80, int(w * h * 0.00008))
+          max_area = int(w * h * 0.55)
+          for c in contours:
+              x, y, cw, ch = cv2.boundingRect(c)
+              area = cw * ch
+              if area < min_area or area > max_area or cw < 8 or ch < 8:
+                  continue
+              # Prefer logo-like compact regions while retaining the original coordinates.
+              ratio = cw / max(ch, 1)
+              if ratio > 8 or ratio < 0.12:
+                  continue
+              contour_area = float(cv2.contourArea(c))
+              candidates.append({
+                  "x": int(x), "y": int(y), "width": int(cw), "height": int(ch),
+                  "box_area": int(area), "contour_area": round(contour_area, 1),
+                  "aspect_ratio": round(ratio, 3)
+              })
+
+          # Deduplicate nested/near-identical boxes and keep the most useful candidates.
+          candidates.sort(key=lambda z: z["box_area"], reverse=True)
+          chosen = []
+          for c in candidates:
+              duplicate = False
+              for p in chosen:
+                  ix1, iy1 = max(c["x"], p["x"]), max(c["y"], p["y"])
+                  ix2 = min(c["x"] + c["width"], p["x"] + p["width"])
+                  iy2 = min(c["y"] + c["height"], p["y"] + p["height"])
+                  inter = max(0, ix2 - ix1) * max(0, iy2 - iy1)
+                  if inter / max(1, min(c["box_area"], p["box_area"])) > 0.85:
+                      duplicate = True
+                      break
+              if not duplicate:
+                  chosen.append(c)
+              if len(chosen) >= 30:
+                  break
+
+          # Preview with numbered boxes; this is diagnostic only and never changes the source.
+          preview = pil.convert("RGB")
+          draw = ImageDraw.Draw(preview)
+          for i, c in enumerate(chosen[:20], 1):
+              x, y, cw, ch = c["x"], c["y"], c["width"], c["height"]
+              draw.rectangle((x, y, x + cw, y + ch), outline=(255, 30, 30), width=max(2, round(max(w,h)/700)))
+              draw.text((x + 3, y + 3), str(i), fill=(255, 255, 0), stroke_width=1, stroke_fill=(0,0,0))
+          preview.save(out / "candidate-overlay.png")
+          pil.save(out / "original.png")
+
+          # Also make a magnified center preview to help spot the main logo.
+          cx1, cy1, cx2, cy2 = int(w*.15), int(h*.10), int(w*.85), int(h*.90)
+          center = pil.crop((cx1, cy1, cx2, cy2))
+          center.thumbnail((1400, 1000))
+          center.save(out / "center-preview.png")
+
+          report = {
+              "source": src.name, "width": w, "height": h, "mode": pil.mode,
+              "candidate_count": len(chosen),
+              "candidates": [{"number": i, **c} for i, c in enumerate(chosen[:20], 1)],
+              "note": "Automatic edge detection is approximate. Inspect candidate-overlay.png and center-preview.png before editing; original.png is unchanged."
+          }
+          (out / "candidates.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+          print(json.dumps(report, indent=2))
+          PY
+
+      - name: Upload diagnostic previews
+        uses: actions/upload-artifact@v4
+        with:
+          name: mega-hack-m-location
+          path: image-location/
+          if-no-files-found: error
+          retention-days: 7
