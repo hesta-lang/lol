@@ -1,0 +1,20 @@
+{
+  "source": "MH_menu-uhd.png",
+  "width": 184,
+  "height": 188,
+  "mode": "RGBA",
+  "candidate_count": 1,
+  "candidates": [
+    {
+      "number": 1,
+      "x": 2,
+      "y": 4,
+      "width": 80,
+      "height": 80,
+      "box_area": 6400,
+      "contour_area": 1999.0,
+      "aspect_ratio": 1.0
+    }
+  ],
+  "note": "Automatic edge detection is approximate. Inspect candidate-overlay.png and center-preview.png before editing; original.png is unchanged."
+}
