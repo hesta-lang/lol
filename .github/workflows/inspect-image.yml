@@ -1,0 +1,73 @@
+name: Inspect Mega Hack reference image
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect-image:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install image tools
+        run: python -m pip install --disable-pip-version-check Pillow
+
+      - name: Inspect original and create coordinate preview
+        run: |
+          python - <<'PY'
+          from PIL import Image, ImageDraw
+          from pathlib import Path
+          import json
+
+          source = Path("MH_menu-uhd.png")
+          out = Path("image-inspection")
+          out.mkdir(exist_ok=True)
+
+          if not source.is_file():
+              raise SystemExit("ERROR: MH_menu-uhd.png was not found at the repository root.")
+
+          im = Image.open(source).convert("RGBA")
+          w, h = im.size
+          im.save(out / "original.png")
+
+          # Grid preview helps locate the M without changing the original.
+          preview = im.convert("RGB")
+          draw = ImageDraw.Draw(preview, "RGBA")
+          step = max(50, round(max(w, h) / 12 / 10) * 10)
+          for x in range(0, w, step):
+              draw.line((x, 0, x, h), fill=(255, 40, 40, 150), width=1)
+              draw.text((x + 3, 3), str(x), fill=(255, 255, 0))
+          for y in range(0, h, step):
+              draw.line((0, y, w, y), fill=(255, 40, 40, 150), width=1)
+              draw.text((3, y + 3), str(y), fill=(255, 255, 0))
+          preview.save(out / "coordinate-preview.png")
+
+          info = {
+              "file": source.name,
+              "format": Image.open(source).format,
+              "width": w,
+              "height": h,
+              "mode": Image.open(source).mode,
+              "grid_spacing_px": step,
+              "note": "original.png is unchanged; coordinate-preview.png adds a grid for locating the M."
+          }
+          (out / "image-info.json").write_text(json.dumps(info, indent=2), encoding="utf-8")
+          print(json.dumps(info, indent=2))
+          PY
+
+      - name: Upload inspection files
+        uses: actions/upload-artifact@v4
+        with:
+          name: mega-hack-image-inspection
+          path: image-inspection/
+          if-no-files-found: error
+          retention-days: 7
