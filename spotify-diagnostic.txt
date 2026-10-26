@@ -1,0 +1,19 @@
+Spotify App Remote diagnostic
+Commit: a9b0781a11bb128b042e76a988e49900d91c94d3
+APK: app/build/outputs/apk/standard/release/app-standard-universal-release.apk
+
+=== Final merged APK manifest: package visibility ===
+
+=== Spotify SDK classes in final APK ===
+lib/arm64-v8a/libandroidx.graphics.path.so
+lib/arm64-v8a/libc++_shared.so
+lib/arm64-v8a/libdiscord_partner_sdk.so
+lib/arm64-v8a/liblauncherfix.so
+
+=== Source manifest query ===
+
+=== SDK AAR archive check ===
+    testing: META-INF/com/android/build/gradle/aar-metadata.properties   OK
+No errors detected in compressed data of app/libs/spotify-app-remote-release-0.8.0.aar.
+
+This report verifies the APK manifest and build inputs; it cannot prove runtime SDK detection by itself.
